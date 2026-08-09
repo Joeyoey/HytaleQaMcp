@@ -519,6 +519,13 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
         var afterState = after.WorldSnapshot.GetProperty("state");
         if (kind == "gate")
         {
+            var expectedPage = ExpectedString(step.Expect, "uiOpened");
+            if (!string.IsNullOrWhiteSpace(expectedPage))
+                return SemanticUiPageMatches(afterState, expectedPage)
+                    ? Pass("gate-inspection-observed",
+                        "Physical gate use opened the expected authenticated player-facing page.")
+                    : new(false, "gate-inspection-not-observed",
+                        "Physical gate use did not open the expected authenticated player-facing page.", false);
             var expectedAcceptance = ExpectedBoolean(step.Expect, "admissionAccepted") ??
                 ExpectedBoolean(step.Expect, "physicalUse") ??
                 (ExpectedString(step.Expect, "event") == "gate.admission_accepted" ? true : null);
@@ -942,10 +949,7 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
             after = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
             afterState = after.WorldSnapshot.GetProperty("state");
-            if (!TrySemanticUi(afterState, out afterUi)) continue;
-            changed = OptionalLong(afterUi, "revision") > beforeRevision ||
-                      after.ObservationSequence > before.ObservationSequence &&
-                      !string.Equals(afterState.GetRawText(), beforeState.GetRawText(), StringComparison.Ordinal);
+            changed = SemanticUiChanged(beforeUi, afterState, out afterUi);
             if (changed && (!verifyExpectations || step.Expect is not { ValueKind: JsonValueKind.Object } ||
                             TryOperationEvidence(afterState, out _))) break;
         }
@@ -980,6 +984,21 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
         state.TryGetProperty("semanticUi", out ui) && ui.ValueKind == JsonValueKind.Object &&
         OptionalBoolean(ui, "available") && ui.TryGetProperty("nodes", out var nodes) &&
         nodes.ValueKind == JsonValueKind.Array;
+
+    internal static bool SemanticUiPageMatches(JsonElement state, string pageId) =>
+        TrySemanticUi(state, out var ui) &&
+        string.Equals(OptionalString(ui, "pageId"), pageId, StringComparison.Ordinal);
+
+    internal static bool SemanticUiChanged(
+        JsonElement beforeUi,
+        JsonElement afterState,
+        out JsonElement afterUi)
+    {
+        if (!TrySemanticUi(afterState, out afterUi))
+            return true; // The authenticated page closed or was replaced.
+        return OptionalLong(afterUi, "revision") > OptionalLong(beforeUi, "revision") ||
+               !string.Equals(afterUi.GetRawText(), beforeUi.GetRawText(), StringComparison.Ordinal);
+    }
 
     private static IReadOnlyList<UiSemanticNode> SemanticUiNodes(JsonElement ui)
     {
