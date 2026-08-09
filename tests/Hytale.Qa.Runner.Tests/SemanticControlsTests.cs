@@ -66,6 +66,17 @@ public sealed class SemanticControlsTests
     }
 
     [Fact]
+    public void AimUsesHytalePitchAndRelativeMouseConvention()
+    {
+        var above = DeterministicAim.Decide(new(Vector3.Zero, 0, 0, new(0, 10, -10)));
+        var below = DeterministicAim.Decide(new(Vector3.Zero, 0, 0, new(0, -10, -10)));
+
+        Assert.Equal(-180, above.Y);
+        Assert.Equal(180, below.Y);
+        Assert.True(DeterministicAim.IsAligned(new(Vector3.Zero, 0, 0, new(0, 0, -10))));
+    }
+
+    [Fact]
     public void NavigatorUsesBoundedPhysicalUnstuckSequence()
     {
         var result = DeterministicNavigator.Decide(new(Vector3.Zero, 0, new(0, 0, 10), true, true, TimeSpan.FromSeconds(4)));

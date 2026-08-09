@@ -14,6 +14,8 @@ public sealed record ObserverControlResult(
 
 public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
 {
+    private const int MaximumInteractionAimSteps = 8;
+    private const double InteractionAimToleranceDegrees = 3;
     private readonly SemaphoreSlim navigationGate = new(1, 1);
     private NavigationProgress? navigationProgress;
 
@@ -79,9 +81,25 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
     public async Task<ObserverControlResult> InteractAsync(string targetKind, string? targetId,
         string? targetState, CancellationToken cancellationToken)
     {
-        var aimed = await AimAsync(targetKind, targetId, targetState, cancellationToken).ConfigureAwait(false);
+        ObserverObservation observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
+        var aimSteps = 0;
+        while (true)
+        {
+            var state = ObservedState.Parse(observation);
+            var target = state.ResolveTarget(targetKind, targetId, targetState).Position;
+            var aim = new AimState(state.Eye, state.YawDegrees, state.PitchDegrees, target);
+            if (DeterministicAim.IsAligned(aim, InteractionAimToleranceDegrees)) break;
+            if (aimSteps >= MaximumInteractionAimSteps)
+                return Result("interact", aimSteps > 0, false, observation,
+                    "Refused interaction because observer-derived aim did not converge.");
+            await worker.AimStepAsync(aim, cancellationToken).ConfigureAwait(false);
+            aimSteps++;
+            await Task.Delay(75, cancellationToken).ConfigureAwait(false);
+            observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
+        }
         await worker.InteractAsync("left_click", cancellationToken).ConfigureAwait(false);
-        return aimed with { Action = "interact", Message = "Aimed and interacted using authenticated target coordinates." };
+        return Result("interact", true, false, observation,
+            $"Aligned in {aimSteps} observer-derived aim step(s) and interacted using authenticated target coordinates.");
     }
 
     public async Task<ObserverControlResult> AimAsync(string targetKind, string? targetId,

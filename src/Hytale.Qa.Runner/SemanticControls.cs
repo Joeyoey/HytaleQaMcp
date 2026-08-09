@@ -45,17 +45,33 @@ public sealed record AimState(Vector3 Eye, double YawDegrees, double PitchDegree
 
 public static class DeterministicAim
 {
-    public static PhysicalIntent Decide(AimState state, double pixelsPerDegree = 12)
+    public static (double Yaw, double Pitch) ErrorDegrees(AimState state)
     {
         var delta = state.Target - state.Eye;
         var horizontal = Math.Sqrt(delta.X * delta.X + delta.Z * delta.Z);
         var desiredYaw = Math.Atan2(-delta.X, -delta.Z) * 180 / Math.PI;
-        var desiredPitch = -Math.Atan2(delta.Y, horizontal) * 180 / Math.PI;
-        var yawError = DeterministicNavigator.Normalize(desiredYaw - state.YawDegrees);
-        var pitchError = Math.Clamp(desiredPitch - state.PitchDegrees, -89, 89);
+        // Hytale 0.5.x Transform.getDirection uses y = sin(pitch), so a
+        // target above the eye has positive pitch and one below has negative.
+        var desiredPitch = Math.Atan2(delta.Y, horizontal) * 180 / Math.PI;
+        return (
+            DeterministicNavigator.Normalize(desiredYaw - state.YawDegrees),
+            Math.Clamp(desiredPitch - state.PitchDegrees, -89, 89));
+    }
+
+    public static bool IsAligned(AimState state, double toleranceDegrees = 3)
+    {
+        var error = ErrorDegrees(state);
+        return Math.Abs(error.Yaw) <= toleranceDegrees &&
+               Math.Abs(error.Pitch) <= toleranceDegrees;
+    }
+
+    public static PhysicalIntent Decide(AimState state, double pixelsPerDegree = 12)
+    {
+        var error = ErrorDegrees(state);
         return new(PhysicalIntentKind.Look,
-            Math.Round(Math.Clamp(-yawError * pixelsPerDegree, -240, 240)),
-            Math.Round(Math.Clamp(pitchError * pixelsPerDegree, -180, 180)));
+            Math.Round(Math.Clamp(-error.Yaw * pixelsPerDegree, -240, 240)),
+            // Positive relative mouse Y looks down and decreases Hytale pitch.
+            Math.Round(Math.Clamp(-error.Pitch * pixelsPerDegree, -180, 180)));
     }
 }
 

@@ -194,6 +194,41 @@ public sealed class AuthenticatedObserverControlsTests
         Assert.Equal(new Vector3(0, 4, 0), interaction.Position);
     }
 
+    [Fact]
+    public async Task InteractionConvergesAuthenticatedAimBeforeClicking()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var worldId = Guid.NewGuid().ToString("D");
+        var gateId = Guid.NewGuid();
+        ObserverObservation GateObservation(long sequence, double yawRadians) =>
+            Observation(sequence, now.AddMilliseconds(sequence * 100), worldId, new
+            {
+                positionX = 0, positionY = 0, positionZ = 0,
+                headYaw = yawRadians, headPitch = 0,
+                grounded = true, jumping = false, falling = false,
+                currentRoomId = "", currentObjectiveId = "",
+                semanticTargets = Array.Empty<object>(), encounters = Array.Empty<object>(),
+                gates = new[] { new
+                {
+                    gateId, state = "OPEN", centerX = 0, centerY = 1.6, centerZ = -10
+                }}
+            });
+        var worker = new NavigationWorker([
+            GateObservation(1, Math.PI / 3),
+            GateObservation(2, Math.PI / 9),
+            GateObservation(3, Math.PI / 90)
+        ]);
+        var controls = new AuthenticatedObserverControls(worker);
+
+        var result = await controls.InteractAsync(
+            "gate", gateId.ToString("D"), "open", CancellationToken.None);
+
+        Assert.True(result.Executed);
+        Assert.Equal(2, worker.AimStates.Count);
+        Assert.Equal(["left_click"], worker.Interactions);
+        Assert.Contains("Aligned in 2", result.Message, StringComparison.Ordinal);
+    }
+
     private static ObserverObservation NavigationObservation(long sequence, DateTimeOffset observedAt, string worldId) =>
         Observation(sequence, observedAt, worldId, new
         {
@@ -216,6 +251,8 @@ public sealed class AuthenticatedObserverControlsTests
     {
         public NavigationWorker(IEnumerable<ObserverObservation> observations) : this(new Queue<ObserverObservation>(observations)) { }
         public List<NavigationState> NavigationStates { get; } = [];
+        public List<AimState> AimStates { get; } = [];
+        public List<string> Interactions { get; } = [];
         public WorkerControlState State { get; } = new(WorkerControlPhase.Armed, 1, "lease", OfflineProofBoundaryKind.LauncherOwnedSingleplayer, DateTimeOffset.UtcNow, null, "test");
         public Task<ObserverObservation> ObserveSolePlayerAsync(CancellationToken cancellationToken) => Task.FromResult(observations.Dequeue());
         public Task<SemanticControlResult> NavigateStepAsync(NavigationState state, CancellationToken cancellationToken)
@@ -226,7 +263,11 @@ public sealed class AuthenticatedObserverControlsTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public Task<WorkerControlState> AttachAsync(int processId, string sessionId, AssistanceMode assistanceMode, EvidenceCapabilities capabilities, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<WorkerControlState> AttachLauncherAsync(int processId, string evidenceFileName, AssistanceMode assistanceMode, EvidenceCapabilities capabilities, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<SemanticControlResult> InteractAsync(string semanticInput, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SemanticControlResult> InteractAsync(string semanticInput, CancellationToken cancellationToken)
+        {
+            Interactions.Add(semanticInput);
+            return Task.FromResult(new SemanticControlResult("interact", [], SafetyCheck.Pass(), DateTimeOffset.UtcNow));
+        }
         public Task<SemanticControlResult> UseAbilityAsync(string semanticInput, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<WorkerControlState> DetachAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task StopDueToProofLossAsync(string reason, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -241,7 +282,11 @@ public sealed class AuthenticatedObserverControlsTests
         public Task<JsonElement> RollingStateAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<JsonElement> RollingStopAsync(string captureId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<JsonElement> RollingAbortAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<SemanticControlResult> AimStepAsync(AimState state, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SemanticControlResult> AimStepAsync(AimState state, CancellationToken cancellationToken)
+        {
+            AimStates.Add(state);
+            return Task.FromResult(new SemanticControlResult("aim", [DeterministicAim.Decide(state)], SafetyCheck.Pass(), DateTimeOffset.UtcNow));
+        }
         public Task<SemanticControlResult> CombatStepAsync(CombatState state, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task ReleaseAllAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
