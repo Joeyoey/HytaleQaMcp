@@ -102,16 +102,16 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
                 var workerSafety = await worker.SafetyAsync(requireForeground: false, cancellationToken).ConfigureAwait(false);
                 if (!workerSafety.Safe) throw new InvalidOperationException($"{workerSafety.Code}: {workerSafety.Message}");
                 heldInputCount = workerSafety.HeldInputCount;
-                lastObservation = ValidateBoundObservation(
-                    await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false));
+                lastObservation = await ObserveWithTransientRetryAsync(
+                    worker.ObserveSolePlayerAsync, cancellationToken).ConfigureAwait(false);
                 proofCurrent = true;
             }
             else if (preflight is not null)
             {
                 var proof = await preflight.GetFreshProofAsync(cancellationToken).ConfigureAwait(false);
                 proofCurrent = SameWorldBoundary(proof, pinnedProof ?? proof);
-                lastObservation = ValidateBoundObservation(
-                    await preflight.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false));
+                lastObservation = await ObserveWithTransientRetryAsync(
+                    preflight.ObserveSolePlayerAsync, cancellationToken).ConfigureAwait(false);
             }
             if (lastObservation is not null)
             {
@@ -1281,8 +1281,32 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
                 "objectiveProgress", "selectedRoute", "completed", "bossPhase", "rewardStatus", "extractionStatus" }
             .Any(name => !string.Equals(Raw(before, name), Raw(after, name), StringComparison.Ordinal));
     }
-    private async Task<ObserverObservation> ObserveWorkerAsync(CancellationToken cancellationToken) =>
-        ValidateBoundObservation(await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false));
+    private Task<ObserverObservation> ObserveWorkerAsync(CancellationToken cancellationToken) =>
+        ObserveWithTransientRetryAsync(worker.ObserveSolePlayerAsync, cancellationToken);
+
+    private async Task<ObserverObservation> ObserveWithTransientRetryAsync(
+        Func<CancellationToken, Task<ObserverObservation>> observe,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return ValidateBoundObservation(
+                    await observe(cancellationToken).ConfigureAwait(false));
+            }
+            catch (ObserverSpoolException failure) when (
+                IsTransientObservationFailure(failure) && attempt < 39)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    internal static bool IsTransientObservationFailure(ObserverSpoolException failure) =>
+        string.Equals(failure.Code, "observer-server-snapshot-unavailable",
+            StringComparison.Ordinal);
 
     private ObserverObservation ValidateBoundObservation(ObserverObservation observation)
     {
