@@ -161,7 +161,7 @@ public sealed class QaMcpTools
         AuthenticatedObserverControls controls,
         [Description("One of: objective, fallback, gate.")] string targetKind,
         [Description("Server-authored target id; optional only for the unique current objective/fallback.")] string? targetId,
-        [Description("Arrival radius in blocks, clamped to 0.5 through 8; gate approaches are additionally capped at 0.75 to preserve the interaction centerline.")] double within,
+        [Description("Arrival radius in blocks, clamped to 0.5 through 8; gate approaches are additionally capped at 1.0 to preserve the interaction centerline.")] double within,
         CancellationToken cancellationToken) =>
         Json(await controls.NavigateAsync(targetKind, targetId, within, cancellationToken));
 

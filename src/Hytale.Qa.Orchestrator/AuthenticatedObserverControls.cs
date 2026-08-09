@@ -16,7 +16,7 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
 {
     private const int MaximumInteractionAimSteps = 8;
     private const double InteractionAimToleranceDegrees = 3;
-    private const double GateApproachArrivalRadius = 0.75;
+    private const double GateApproachArrivalRadius = 1.0;
     private readonly SemaphoreSlim navigationGate = new(1, 1);
     private NavigationProgress? navigationProgress;
 

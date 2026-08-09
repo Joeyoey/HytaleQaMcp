@@ -215,7 +215,7 @@ public sealed class AuthenticatedObserverControlsTests
             });
         var worker = new NavigationWorker([
             GateObservation(1, -213.9),
-            GateObservation(2, -215.0)
+            GateObservation(2, -214.6)
         ]);
         var controls = new AuthenticatedObserverControls(worker);
 
