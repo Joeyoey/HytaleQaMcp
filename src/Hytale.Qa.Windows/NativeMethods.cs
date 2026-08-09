@@ -20,6 +20,7 @@ internal static class NativeMethods
     internal const uint MouseXUp = 0x0100;
     internal const uint Srccopy = 0x00CC0020;
     internal const uint DibRgbColors = 0;
+    internal const uint DwmExtendedFrameBounds = 9;
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern uint SendInput(uint count, Input[] inputs, int size);
@@ -45,6 +46,17 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetClientRect(nint window, out Rect rect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(nint window, out Rect rect);
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(
+        nint window,
+        uint attribute,
+        out Rect value,
+        uint valueSize);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

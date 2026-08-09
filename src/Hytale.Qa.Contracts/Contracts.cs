@@ -115,7 +115,8 @@ public sealed record CaptureArtifact(
     int Height,
     DateTimeOffset CapturedAtUtc,
     string Sha256,
-    CaptureCapability Capability);
+    CaptureCapability Capability,
+    string DisplayMode = "unknown");
 
 public sealed record AudioCaptureCapability(
     string Backend,

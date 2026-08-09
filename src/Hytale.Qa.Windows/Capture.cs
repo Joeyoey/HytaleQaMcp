@@ -76,7 +76,7 @@ public sealed class VisibleWindowGdiCaptureBackend : IWindowCaptureBackend
             if (File.Exists(fullPath)) throw new IOException("Screenshot destination already exists; evidence is append-only.");
             WriteBitmap(fullPath, width, height, pixels);
             return new(fullPath, "image/bmp", width, height, DateTimeOffset.UtcNow,
-                EvidenceFile.ComputeSha256(fullPath), Capability);
+                EvidenceFile.ComputeSha256(fullPath), Capability, GetDisplayMode(window));
         }
         finally
         {
@@ -85,6 +85,20 @@ public sealed class VisibleWindowGdiCaptureBackend : IWindowCaptureBackend
             if (memoryDc != nint.Zero) NativeMethods.DeleteDC(memoryDc);
             if (screenDc != nint.Zero) NativeMethods.ReleaseDC(nint.Zero, screenDc);
         }
+    }
+
+    private static string GetDisplayMode(nint window)
+    {
+        var windowRect = ClientAreaCrop.GetCaptureFrameRect(window);
+        if (!NativeMethods.GetClientRect(window, out var clientRect))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        var origin = new NativeMethods.Point();
+        if (!NativeMethods.ClientToScreen(window, ref origin))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return ClientAreaCrop.Resolve(
+            windowRect, clientRect, origin,
+            windowRect.Right - windowRect.Left,
+            windowRect.Bottom - windowRect.Top).DisplayMode;
     }
 
     private static void WriteBitmap(string path, int width, int height, byte[] pixels)
@@ -116,7 +130,7 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
         WorksWhenMinimized: false,
         Formats: ["image/bmp"],
         Limitation: IsSupported()
-            ? "Captures the leased HWND when visible or occluded. Minimized windows are rejected because Windows may stop producing current frames. SDR BGRA8 output may tone-map HDR content."
+            ? "Captures and crops the leased HWND to its client area when visible or occluded. Minimized windows are rejected because Windows may stop producing current frames. SDR BGRA8 output may tone-map HDR content."
             : "Windows.Graphics.Capture requires Windows 10 build 18362 or later and GraphicsCaptureSession.IsSupported().");
 
     public CaptureArtifact Capture(ProcessIdentity identity, string destinationPath)
@@ -138,7 +152,8 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
             ValidateWindow(identity, rejectMinimized: true);
             File.Move(temporaryPath, finalPath, overwrite: false);
             return new(finalPath, "image/bmp", dimensions.Width, dimensions.Height,
-                DateTimeOffset.UtcNow, EvidenceFile.ComputeSha256(finalPath), Capability);
+                DateTimeOffset.UtcNow, EvidenceFile.ComputeSha256(finalPath), Capability,
+                dimensions.DisplayMode);
         }
         catch
         {
@@ -150,7 +165,7 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
     public static bool IsSupported() =>
         OperatingSystem.IsWindowsVersionAtLeast(10, 0, 18362) && GraphicsCaptureSession.IsSupported();
 
-    private static async Task<(int Width, int Height)> CaptureAsync(
+    private static async Task<(int Width, int Height, string DisplayMode)> CaptureAsync(
         ProcessIdentity identity,
         string temporaryPath,
         TimeSpan timeout)
@@ -190,6 +205,14 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.BmpEncoderId, memoryStream)
                 .AsTask().ConfigureAwait(false);
             encoder.SetSoftwareBitmap(bitmap);
+            var crop = ClientAreaCrop.ForWindow((nint)identity.WindowHandle, size.Width, size.Height);
+            encoder.BitmapTransform.Bounds = new BitmapBounds
+            {
+                X = checked((uint)crop.X),
+                Y = checked((uint)crop.Y),
+                Width = checked((uint)crop.Width),
+                Height = checked((uint)crop.Height)
+            };
             await encoder.FlushAsync().AsTask().ConfigureAwait(false);
             if (memoryStream.Size == 0 || memoryStream.Size > int.MaxValue)
                 throw new InvalidOperationException("Encoded capture size is invalid.");
@@ -202,7 +225,7 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
             var bytes = new byte[byteCount];
             reader.ReadBytes(bytes);
             await File.WriteAllBytesAsync(temporaryPath, bytes).ConfigureAwait(false);
-            return (size.Width, size.Height);
+            return (crop.Width, crop.Height, crop.DisplayMode);
         }
         finally
         {
@@ -246,6 +269,53 @@ public sealed class WindowsGraphicsCaptureBackend : IWindowCaptureBackend
     {
         try { if (File.Exists(path)) File.Delete(path); }
         catch { /* Preserve the original capture failure. */ }
+    }
+}
+
+internal sealed record ClientAreaCrop(int X, int Y, int Width, int Height, string DisplayMode)
+{
+    internal static ClientAreaCrop ForWindow(nint window, int frameWidth, int frameHeight)
+    {
+        var windowRect = GetCaptureFrameRect(window);
+        if (!NativeMethods.GetClientRect(window, out var clientRect))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        var origin = new NativeMethods.Point();
+        if (!NativeMethods.ClientToScreen(window, ref origin))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return Resolve(windowRect, clientRect, origin, frameWidth, frameHeight);
+    }
+
+    internal static NativeMethods.Rect GetCaptureFrameRect(nint window)
+    {
+        if (NativeMethods.DwmGetWindowAttribute(
+                window,
+                NativeMethods.DwmExtendedFrameBounds,
+                out var frameRect,
+                checked((uint)Marshal.SizeOf<NativeMethods.Rect>())) == 0)
+            return frameRect;
+        if (!NativeMethods.GetWindowRect(window, out frameRect))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return frameRect;
+    }
+
+    internal static ClientAreaCrop Resolve(
+        NativeMethods.Rect windowRect,
+        NativeMethods.Rect clientRect,
+        NativeMethods.Point clientOrigin,
+        int frameWidth,
+        int frameHeight)
+    {
+        var width = clientRect.Right - clientRect.Left;
+        var height = clientRect.Bottom - clientRect.Top;
+        var x = clientOrigin.X - windowRect.Left;
+        var y = clientOrigin.Y - windowRect.Top;
+        if (width <= 0 || height <= 0 || x < 0 || y < 0 ||
+            x + width > frameWidth || y + height > frameHeight)
+            throw new InvalidOperationException("Window client area is outside the captured frame.");
+        var displayMode = x == 0 && y == 0 && width == frameWidth && height == frameHeight
+            ? "borderless"
+            : "windowed";
+        return new(x, y, width, height, displayMode);
     }
 }
 

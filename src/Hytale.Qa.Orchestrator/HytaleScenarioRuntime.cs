@@ -238,11 +238,12 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
         Directory.CreateDirectory(artifacts);
         var capture = await worker.ScreenshotAsync(NextScreenshot("launch"), cancellationToken).ConfigureAwait(false);
         if (capture.Width != scenario.Fixture.Client.Width || capture.Height != scenario.Fixture.Client.Height ||
-            !string.Equals(scenario.Fixture.Client.DisplayMode, "borderless", StringComparison.Ordinal) ||
+            !string.Equals(capture.DisplayMode, scenario.Fixture.Client.DisplayMode, StringComparison.Ordinal) ||
             Math.Abs(scenario.Fixture.Client.HudScale - 1d) > 0.0001)
             return Blocked("semantic-ui-client-profile-mismatch",
-                $"Captured client is {capture.Width}x{capture.Height}; scenario requires " +
-                $"{scenario.Fixture.Client.Width}x{scenario.Fixture.Client.Height} borderless at HUD scale 1.");
+                $"Captured client is {capture.Width}x{capture.Height} {capture.DisplayMode}; scenario requires " +
+                $"{scenario.Fixture.Client.Width}x{scenario.Fixture.Client.Height} " +
+                $"{scenario.Fixture.Client.DisplayMode} at HUD scale 1.");
         launchScreenshotSha256 = capture.Sha256;
         var surface = GameplaySurfaceClassifier.Classify(capture.Path);
         clientModalVisible = surface.State == GameplaySurfaceState.Ready ? false : null;

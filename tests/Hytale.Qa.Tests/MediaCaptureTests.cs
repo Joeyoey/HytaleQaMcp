@@ -114,8 +114,9 @@ public sealed class MediaCaptureTests
             Assert.True(bytes.Length > 54);
             Assert.Equal((byte)'B', bytes[0]);
             Assert.Equal((byte)'M', bytes[1]);
-            Assert.True(artifact.Width >= 320);
-            Assert.True(artifact.Height >= 180);
+            Assert.Equal(320, artifact.Width);
+            Assert.Equal(180, artifact.Height);
+            Assert.Equal("windowed", artifact.DisplayMode);
             Assert.Equal(64, artifact.Sha256.Length);
         }
         finally
