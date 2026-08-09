@@ -247,6 +247,46 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
                 $"{scenario.Fixture.Client.DisplayMode} at HUD scale 1.");
         launchScreenshotSha256 = capture.Sha256;
         var surface = GameplaySurfaceClassifier.Classify(capture.Path);
+        var respawned = false;
+        if (surface.State != GameplaySurfaceState.Ready)
+        {
+            lastObservation = await ObserveWithTransientRetryAsync(
+                worker.ObserveSolePlayerAsync, cancellationToken).ConfigureAwait(false);
+            var observedState = lastObservation.WorldSnapshot.GetProperty("state");
+            if (OptionalBoolean(observedState, "dead"))
+            {
+                var deathSurface = DeathSurfaceClassifier.Classify(capture.Path);
+                if (deathSurface.State != DeathSurfaceState.Ready)
+                    return Blocked(deathSurface.Code, deathSurface.Message);
+
+                // Native 0.5.x death UI bounds, normalized to the already-pinned
+                // client area. This internal target is never caller supplied and
+                // is gated by both authenticated dead=true and visual proof.
+                var respawn = new UiSemanticNode("native.respawn", "Respawn", "ready", true, true,
+                    0.452, 0.505, 0.115, 0.040, Operation: "respawn");
+                await worker.ClickUiAsync(respawn, cancellationToken).ConfigureAwait(false);
+
+                var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+                do
+                {
+                    await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+                    lastObservation = await ObserveWithTransientRetryAsync(
+                        worker.ObserveSolePlayerAsync, cancellationToken).ConfigureAwait(false);
+                    observedState = lastObservation.WorldSnapshot.GetProperty("state");
+                    if (!OptionalBoolean(observedState, "dead")) break;
+                } while (DateTimeOffset.UtcNow < deadline);
+                if (OptionalBoolean(observedState, "dead"))
+                    return Blocked("native-respawn-not-observed",
+                        "The proven native respawn control was clicked, but the authenticated observer still reports dead=true.");
+
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                capture = await worker.ScreenshotAsync(NextScreenshot("post-respawn"), cancellationToken)
+                    .ConfigureAwait(false);
+                surface = GameplaySurfaceClassifier.Classify(capture.Path);
+                launchScreenshotSha256 = capture.Sha256;
+                respawned = true;
+            }
+        }
         clientModalVisible = surface.State == GameplaySurfaceState.Ready ? false : null;
         if (surface.State != GameplaySurfaceState.Ready)
             return Blocked(surface.Code, surface.Message);
@@ -266,7 +306,10 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
             if (state.Status != AudioCaptureStatus.Capturing || string.IsNullOrWhiteSpace(audioCaptureId))
                 return Untested("audio-capture-unavailable", state.Capability.Limitation ?? "Process audio capture did not start.");
         }
-        return Pass("existing-client-attached", "Attached the existing launcher-proven client; no Hytale process was launched.");
+        return respawned
+            ? Pass("existing-client-respawned-and-attached",
+                "Recovered a proven native death screen through the authenticated offline client, then attached to the gameplay HUD.")
+            : Pass("existing-client-attached", "Attached the existing launcher-proven client; no Hytale process was launched.");
     }
 
     private async Task<QaStepResult> StopAsync(QaScenarioStep step, CancellationToken cancellationToken)
