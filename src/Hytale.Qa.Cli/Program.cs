@@ -112,7 +112,7 @@ try
         var requiredFiles = new[]
         {
             paths.ClientCapabilityPath, paths.ServerJarPath, paths.ClientExecutablePath,
-            paths.FfmpegAllowlistPath, paths.ObserverCapabilitiesPath
+            paths.ObserverCapabilitiesPath
         };
         var missingDirectories = requiredDirectories.Where(path => !Directory.Exists(path)).ToArray();
         var missingFiles = requiredFiles.Where(path => !File.Exists(path)).ToArray();
@@ -132,6 +132,11 @@ try
             paths.SuiteDirectory,
             paths.EvidenceRootDirectory,
             paths.WorkerExecutablePath,
+            optionalFfmpeg = new
+            {
+                allowlistPath = paths.FfmpegAllowlistPath,
+                configured = File.Exists(paths.FfmpegAllowlistPath)
+            },
             docker = new { endpoint = paths.DockerEndpoint, project = paths.DockerProject,
                 container = paths.DockerContainer, network = paths.DockerNetwork, valid = dockerIdentityValid },
             valid = missingDirectories.Length == 0 && missingFiles.Length == 0 && dockerIdentityValid,
