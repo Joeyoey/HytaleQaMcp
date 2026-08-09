@@ -1,0 +1,10 @@
+{
+  "schema": "hytale-qa-observer-capabilities-v1",
+  "inventorySelectors": [],
+  "eventTypes": [],
+  "hashSubjects": {},
+  "visualAssertions": ["nonBlank", "changedFromLaunch"],
+  "semanticUiOperations": [],
+  "semanticUiAssertions": [],
+  "semanticUiTargets": []
+}

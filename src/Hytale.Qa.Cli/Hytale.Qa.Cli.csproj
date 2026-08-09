@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hytale.Qa.Orchestrator\Hytale.Qa.Orchestrator.csproj" />
+    <ProjectReference Include="..\Hytale.Qa.Runner\Hytale.Qa.Runner.csproj" />
+  </ItemGroup>
+</Project>

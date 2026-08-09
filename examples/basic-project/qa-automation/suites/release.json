@@ -1,0 +1,15 @@
+{
+  "schema": "hytale-qa-suite/v1",
+  "id": "suite.release",
+  "purpose": "release_gate",
+  "coverage": ["offline_safety", "physical_input"],
+  "execution": {
+    "order": "listed", "maximumParallelClients": 1, "freshSessionPerScenario": true,
+    "requireOfflineProof": true, "failFast": true
+  },
+  "scenarios": ["smoke.offline-physical-input"],
+  "releaseCriteria": {
+    "requireAllPass": true, "allowUntested": false, "allowWhiteBoxForPlayerFacing": false,
+    "requiredEvidence": ["input_transcript", "packet_evidence", "state_diffs", "manifest_hash", "screenshots"]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "schema": "hytale-qa-ffmpeg-allowlist-v1",
+  "executablePath": "C:\\path\\to\\ffmpeg.exe",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+}

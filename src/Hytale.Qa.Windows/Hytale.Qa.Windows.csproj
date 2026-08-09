@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <ProjectReference Include="..\Hytale.Qa.Contracts\Hytale.Qa.Contracts.csproj" />
+  </ItemGroup>
+</Project>

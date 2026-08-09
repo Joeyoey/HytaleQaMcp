@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hytale.Qa.Contracts\Hytale.Qa.Contracts.csproj" />
+    <ProjectReference Include="..\Hytale.Qa.Runner\Hytale.Qa.Runner.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hytale.Qa.Tests" />
+  </ItemGroup>
+</Project>

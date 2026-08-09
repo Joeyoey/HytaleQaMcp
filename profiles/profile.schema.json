@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hytale-qa.dev/schema/profile-v1.json",
+  "title": "Hytale QA project profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "id", "serverProfile", "projectRoot", "offlineScriptsDirectory", "scenarioDirectory",
+    "suiteDirectory", "controlDirectory", "evidenceRootDirectory", "launcherControlDirectory",
+    "clientCapabilityPath", "serverJarPath", "clientExecutablePath", "workerExecutablePath",
+    "ffmpegAllowlistPath", "observerCapabilitiesPath", "docker"
+  ],
+  "properties": {
+    "schema": { "const": "hytale-qa-profile-v1" },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "serverProfile": { "type": "string", "minLength": 1 },
+    "projectRoot": { "$ref": "#/$defs/path" },
+    "offlineScriptsDirectory": { "$ref": "#/$defs/path" },
+    "scenarioDirectory": { "$ref": "#/$defs/path" },
+    "suiteDirectory": { "$ref": "#/$defs/path" },
+    "controlDirectory": { "$ref": "#/$defs/path" },
+    "evidenceRootDirectory": { "$ref": "#/$defs/path" },
+    "launcherControlDirectory": { "$ref": "#/$defs/path" },
+    "clientCapabilityPath": { "$ref": "#/$defs/path" },
+    "serverJarPath": { "$ref": "#/$defs/path" },
+    "clientExecutablePath": { "$ref": "#/$defs/path" },
+    "workerExecutablePath": { "$ref": "#/$defs/path" },
+    "ffmpegAllowlistPath": { "$ref": "#/$defs/path" },
+    "observerCapabilitiesPath": { "$ref": "#/$defs/path" },
+    "docker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "project", "container", "network"],
+      "properties": {
+        "endpoint": { "type": "string", "pattern": "^(127\\.|\\[::1\\]:|::1:).+" },
+        "project": { "type": "string", "minLength": 1 },
+        "container": { "type": "string", "minLength": 1 },
+        "network": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute or profile-relative path. Supports {profileDir}, {projectRoot}, {toolRoot}, {hytaleLatest}, {appData}, {localAppData}, and environment variables."
+    }
+  }
+}

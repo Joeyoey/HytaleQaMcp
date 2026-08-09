@@ -1,0 +1,25 @@
+{
+  "schema": "hytale-qa-profile-v1",
+  "id": "basic-example",
+  "serverProfile": "example-offline",
+  "projectRoot": "..",
+  "offlineScriptsDirectory": "{projectRoot}/scripts",
+  "scenarioDirectory": "{projectRoot}/qa-automation/scenarios",
+  "suiteDirectory": "{projectRoot}/qa-automation/suites",
+  "controlDirectory": "{projectRoot}/run/control",
+  "evidenceRootDirectory": "{projectRoot}/run/evidence",
+  "launcherControlDirectory": "{projectRoot}/run/launcher",
+  "clientCapabilityPath": "{projectRoot}/client-capability.json",
+  "serverJarPath": "{hytaleLatest}/Server/HytaleServer.jar",
+  "clientExecutablePath": "{hytaleLatest}/Client/HytaleClient.exe",
+  "workerExecutablePath": "{toolRoot}/src/Hytale.Qa.Worker/bin/Release/net9.0-windows10.0.20348.0/Hytale.Qa.Worker.exe",
+  "ffmpegAllowlistPath": "{toolRoot}/config/ffmpeg.allowlist.local.json",
+  "observerCapabilitiesPath": "{projectRoot}/qa-automation/observer-capabilities.json",
+  "docker": {
+    "endpoint": "127.0.0.1:5542",
+    "project": "basic-example-qa-offline",
+    "container": "basic-example-qa-offline",
+    "network": "basic-example-qa-offline-net"
+  },
+  "mcp": { "name": "basic-hytale-qa", "title": "Basic Offline Hytale QA" }
+}

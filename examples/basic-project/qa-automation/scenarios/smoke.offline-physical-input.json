@@ -1,0 +1,44 @@
+{
+  "schema": "hytale-qa/v1",
+  "id": "smoke.offline-physical-input",
+  "description": "Portable proof-bound physical input smoke scenario.",
+  "tags": ["smoke", "offline", "physical_input"],
+  "mode": "guided_physical",
+  "capabilities": ["physical_input", "observer_guidance"],
+  "fixture": {
+    "serverProfile": "example-offline",
+    "snapshotSelector": "observe_and_pin",
+    "worldSeedSelector": "proof_bound",
+    "runSeedSelector": "observe_and_pin",
+    "player": { "identitySelector": "proof_bound_sole_player" },
+    "client": {
+      "width": 1280, "height": 720, "displayMode": "borderless", "hudScale": 1.0,
+      "fov": 80, "keybindProfile": "default", "graphicsProfile": "stable"
+    },
+    "loadoutSelector": "observe_and_pin"
+  },
+  "safety": {
+    "offlineRequired": true, "loopbackOnly": true, "maximumClientProcesses": 1,
+    "abortOnFocusLoss": true, "abortOnEndpointDrift": true,
+    "forbiddenCapabilities": ["teleport", "packet_injection", "direct_damage", "admin_command"]
+  },
+  "budgets": {
+    "totalSeconds": 60, "stepSeconds": 20, "noProgressSeconds": 20,
+    "maximumDeaths": 0, "maximumRecoveries": 0
+  },
+  "steps": [
+    { "id": "start", "operation": "session.start" },
+    { "id": "attach", "operation": "client.launch_offline" },
+    { "id": "ready", "operation": "wait.for", "target": { "kind": "objective", "id": "world.ready" } },
+    {
+      "id": "probe", "operation": "trace.mark",
+      "target": { "kind": "objective", "id": "qa.smoke_target" },
+      "arguments": { "physicalInputProbe": "look_and_click" }
+    },
+    { "id": "stop", "operation": "session.stop" }
+  ],
+  "artifacts": {
+    "screenshots": "all_actions", "rollingVideoSeconds": 15, "audio": true,
+    "inputTranscript": true, "packetEvidence": true, "stateDiffs": true, "manifestHash": true
+  }
+}

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Hytale.Qa.Contracts\Hytale.Qa.Contracts.csproj" />
+  </ItemGroup>
+</Project>

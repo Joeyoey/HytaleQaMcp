@@ -1,0 +1,29 @@
+{
+  "$schema": "./profile.schema.json",
+  "schema": "hytale-qa-profile-v1",
+  "id": "my-hytale-mod",
+  "serverProfile": "my-hytale-mod-offline",
+  "projectRoot": "..",
+  "offlineScriptsDirectory": "{projectRoot}/scripts/qa/offline",
+  "scenarioDirectory": "{projectRoot}/qa-automation/scenarios",
+  "suiteDirectory": "{projectRoot}/qa-automation/suites",
+  "controlDirectory": "{projectRoot}/run/qa-offline/control",
+  "evidenceRootDirectory": "{projectRoot}/run/qa-evidence",
+  "launcherControlDirectory": "{projectRoot}/run/qa-offline/launcher-singleplayer-control",
+  "clientCapabilityPath": "{projectRoot}/scripts/qa/offline/client-cli-capabilities.0.5.7.json",
+  "serverJarPath": "{hytaleLatest}/Server/HytaleServer.jar",
+  "clientExecutablePath": "{hytaleLatest}/Client/HytaleClient.exe",
+  "workerExecutablePath": "{toolRoot}/src/Hytale.Qa.Worker/bin/Release/net9.0-windows10.0.20348.0/Hytale.Qa.Worker.exe",
+  "ffmpegAllowlistPath": "{toolRoot}/config/ffmpeg.allowlist.local.json",
+  "observerCapabilitiesPath": "{projectRoot}/qa-automation/observer-capabilities.json",
+  "docker": {
+    "endpoint": "127.0.0.1:5542",
+    "project": "my-hytale-mod-qa-offline",
+    "container": "my-hytale-mod-qa-offline",
+    "network": "my-hytale-mod-qa-offline-net"
+  },
+  "mcp": {
+    "name": "my-hytale-mod-qa",
+    "title": "My Hytale Mod Offline QA"
+  }
+}

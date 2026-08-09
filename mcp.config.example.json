@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "hytale-qa": {
+      "command": "powershell.exe",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "<absolute-hytale-qa-repo>\\scripts\\Start-HytaleQaMcp.ps1",
+        "-Profile",
+        "<absolute-project-profile>"
+      ]
+    }
+  }
+}
