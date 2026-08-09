@@ -260,7 +260,7 @@ public sealed class AuthenticatedObserverControlsTests
 
         Assert.True(result.Executed);
         Assert.Equal(2, worker.AimStates.Count);
-        Assert.Equal(["right_click"], worker.Interactions);
+        Assert.Equal(["use"], worker.Interactions);
         Assert.Contains("Aligned in 2", result.Message, StringComparison.Ordinal);
     }
 

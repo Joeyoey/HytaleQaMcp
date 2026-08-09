@@ -476,6 +476,9 @@ public sealed class WorkerControlService : IWorkerControlService
             case PhysicalIntentKind.PressKey when string.Equals(intent.Key, "MIDDLE", StringComparison.Ordinal):
                 await TimedMouseAsync(current, currentLease, MouseButton.Middle, intent.DurationMilliseconds, cancellationToken).ConfigureAwait(false);
                 return;
+            case PhysicalIntentKind.PressKey when string.Equals(intent.Key, "USE", StringComparison.Ordinal):
+                await TimedKeyAsync(current, currentLease, 0x46, intent.DurationMilliseconds, 100, cancellationToken).ConfigureAwait(false);
+                return;
             default:
                 throw new InvalidOperationException($"Physical intent is not allowlisted: {intent.Kind}/{intent.Key}");
         }
@@ -656,6 +659,7 @@ public sealed class WorkerControlService : IWorkerControlService
     {
         "left_click" => new(PhysicalIntentKind.PrimaryClick, DurationMilliseconds: 40),
         "right_click" => new(PhysicalIntentKind.SecondaryClick, DurationMilliseconds: 40),
+        "use" when !ability => new(PhysicalIntentKind.PressKey, Key: "USE", DurationMilliseconds: 40),
         "middle_click" when ability => new(PhysicalIntentKind.PressKey, Key: "MIDDLE", DurationMilliseconds: 40),
         "x1" when ability => new(PhysicalIntentKind.PressKey, Key: "X1", DurationMilliseconds: 40),
         "x2" when ability => new(PhysicalIntentKind.PressKey, Key: "X2", DurationMilliseconds: 40),

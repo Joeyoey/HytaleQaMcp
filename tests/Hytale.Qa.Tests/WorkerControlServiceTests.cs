@@ -136,6 +136,25 @@ public sealed class WorkerControlServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SemanticBlockUseEmitsOnlyTheAuditedInteractKey()
+    {
+        var rpc = new FakeWorkerClient();
+        await using var control = new WorkerControlService(Paths(),
+            new FakeWorkerClientFactory(rpc, []), new FakeProofFactory(new FakeProofProvider([])));
+        await control.AttachLauncherAsync(4242, "proof.json", AssistanceMode.GuidedPhysical,
+            Capabilities(), CancellationToken.None);
+
+        var result = await control.InteractAsync("use", CancellationToken.None);
+
+        Assert.Equal("interact", result.Kind);
+        var keyCalls = rpc.Parameters.Where(call => call.Method == "input.key")
+            .Select(call => call.Value).ToArray();
+        Assert.Equal(2, keyCalls.Length);
+        Assert.Equal(0x46, keyCalls[0].GetProperty("virtualKey").GetInt32());
+        Assert.DoesNotContain("input.mouseButton", rpc.Methods);
+    }
+
+    [Fact]
     public async Task ArtifactNamesCannotEscapeIsolatedDirectory()
     {
         var paths = Paths();
