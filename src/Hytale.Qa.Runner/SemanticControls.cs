@@ -18,12 +18,15 @@ public static class DeterministicNavigator
         var delta = state.Target - state.Position;
         var horizontal = new Vector2(delta.X, delta.Z);
         if (horizontal.Length() <= 0.8f) return [new(PhysicalIntentKind.ReleaseAll)];
-        var desired = Math.Atan2(delta.X, delta.Z) * 180 / Math.PI;
+        // Hytale 0.5.x Transform.getDirection(pitch, yaw) projects forward as
+        // x = -cos(pitch) * sin(yaw), z = -cos(pitch) * cos(yaw).
+        var desired = Math.Atan2(-delta.X, -delta.Z) * 180 / Math.PI;
         var error = Normalize(desired - state.YawDegrees);
         if (state.NoProgress >= TimeSpan.FromSeconds(4))
-            return [new(PhysicalIntentKind.ReleaseAll), new(PhysicalIntentKind.MoveBackward, DurationMilliseconds: 250), new(PhysicalIntentKind.StrafeRight, DurationMilliseconds: 350), new(PhysicalIntentKind.Jump, DurationMilliseconds: 80), new(PhysicalIntentKind.Turn, Math.CopySign(35, error == 0 ? 1 : error))];
+            return [new(PhysicalIntentKind.ReleaseAll), new(PhysicalIntentKind.MoveBackward, DurationMilliseconds: 250), new(PhysicalIntentKind.StrafeRight, DurationMilliseconds: 350), new(PhysicalIntentKind.Jump, DurationMilliseconds: 80), new(PhysicalIntentKind.Turn, Math.CopySign(35, error == 0 ? -1 : -error))];
         if (Math.Abs(error) > 8)
-            return [new(PhysicalIntentKind.Turn, Math.Clamp(error, -20, 20))];
+            // Positive relative mouse X turns right, which decreases Hytale yaw.
+            return [new(PhysicalIntentKind.Turn, Math.Clamp(-error, -20, 20))];
         if (state.LineOfTravelBlocked && state.Grounded)
             return [new(PhysicalIntentKind.Jump, DurationMilliseconds: 80), new(PhysicalIntentKind.MoveForward, DurationMilliseconds: 300)];
         return [new(PhysicalIntentKind.MoveForward, DurationMilliseconds: 100)];
@@ -46,12 +49,12 @@ public static class DeterministicAim
     {
         var delta = state.Target - state.Eye;
         var horizontal = Math.Sqrt(delta.X * delta.X + delta.Z * delta.Z);
-        var desiredYaw = Math.Atan2(delta.X, delta.Z) * 180 / Math.PI;
+        var desiredYaw = Math.Atan2(-delta.X, -delta.Z) * 180 / Math.PI;
         var desiredPitch = -Math.Atan2(delta.Y, horizontal) * 180 / Math.PI;
         var yawError = DeterministicNavigator.Normalize(desiredYaw - state.YawDegrees);
         var pitchError = Math.Clamp(desiredPitch - state.PitchDegrees, -89, 89);
         return new(PhysicalIntentKind.Look,
-            Math.Round(Math.Clamp(yawError * pixelsPerDegree, -240, 240)),
+            Math.Round(Math.Clamp(-yawError * pixelsPerDegree, -240, 240)),
             Math.Round(Math.Clamp(pitchError * pixelsPerDegree, -180, 180)));
     }
 }

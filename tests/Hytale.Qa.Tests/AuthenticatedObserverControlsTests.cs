@@ -173,7 +173,7 @@ public sealed class AuthenticatedObserverControlsTests
             positionX = 0, positionY = 4, positionZ = 0, headYaw = 0, headPitch = 0,
             grounded = true, jumping = false, falling = false,
             currentRoomId = "room_alpha", currentObjectiveId = "objective.exit",
-            objectiveWorldX = 0, objectiveWorldY = 9, objectiveWorldZ = 20,
+            objectiveWorldX = 0, objectiveWorldY = 9, objectiveWorldZ = -20,
             fallbackWorldX = 0, fallbackWorldY = 4, fallbackWorldZ = 0,
             semanticTargets = Array.Empty<object>(), gates = Array.Empty<object>(), encounters = Array.Empty<object>()
         });

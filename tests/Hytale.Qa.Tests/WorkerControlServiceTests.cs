@@ -123,7 +123,7 @@ public sealed class WorkerControlServiceTests : IDisposable
             Capabilities(), CancellationToken.None);
 
         var result = await control.NavigateStepAsync(new(
-            System.Numerics.Vector3.Zero, 0, new(0, 0, 10), true, false, TimeSpan.Zero),
+            System.Numerics.Vector3.Zero, 0, new(0, 0, -10), true, false, TimeSpan.Zero),
             CancellationToken.None);
 
         Assert.Equal("navigate", result.Kind);

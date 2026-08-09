@@ -30,10 +30,39 @@ public sealed class SemanticControlsTests
     [Fact]
     public void NavigatorTurnsBeforeMovingAndStopsAtTarget()
     {
-        var turn = DeterministicNavigator.Decide(new(Vector3.Zero, 90, new(0, 0, 10), true, false, TimeSpan.Zero));
-        Assert.Equal(PhysicalIntentKind.Turn, Assert.Single(turn).Kind);
+        // Hytale yaw 0 faces -Z. Reaching +Z requires yaw +/-180.
+        var turn = Assert.Single(DeterministicNavigator.Decide(
+            new(Vector3.Zero, 0, new(0, 0, 10), true, false, TimeSpan.Zero)));
+        Assert.Equal(PhysicalIntentKind.Turn, turn.Kind);
+        Assert.Equal(20, Math.Abs(turn.X));
+        var forward = Assert.Single(DeterministicNavigator.Decide(
+            new(Vector3.Zero, 0, new(0, 0, -10), true, false, TimeSpan.Zero)));
+        Assert.Equal(PhysicalIntentKind.MoveForward, forward.Kind);
         var stop = DeterministicNavigator.Decide(new(Vector3.Zero, 0, new(0.5f, 0, 0.5f), true, false, TimeSpan.Zero));
         Assert.Equal(PhysicalIntentKind.ReleaseAll, Assert.Single(stop).Kind);
+    }
+
+    [Theory]
+    [InlineData(-10, 0, 0, -20)] // west is yaw +90, so turn mouse left
+    [InlineData(10, 0, 0, 20)]   // east is yaw -90, so turn mouse right
+    public void NavigatorUsesHytaleCardinalYawAndMouseConvention(
+        float targetX, float targetY, float targetZ, double expectedMouseX)
+    {
+        var turn = Assert.Single(DeterministicNavigator.Decide(
+            new(Vector3.Zero, 0, new(targetX, targetY, targetZ), true, false, TimeSpan.Zero)));
+
+        Assert.Equal(PhysicalIntentKind.Turn, turn.Kind);
+        Assert.Equal(expectedMouseX, turn.X);
+    }
+
+    [Fact]
+    public void AimUsesHytaleYawAndRelativeMouseConvention()
+    {
+        var east = DeterministicAim.Decide(new(Vector3.Zero, 0, 0, new(10, 0, 0)));
+        var west = DeterministicAim.Decide(new(Vector3.Zero, 0, 0, new(-10, 0, 0)));
+
+        Assert.Equal(240, east.X);
+        Assert.Equal(-240, west.X);
     }
 
     [Fact]
