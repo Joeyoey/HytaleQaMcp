@@ -16,6 +16,7 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
 {
     private const int MaximumInteractionAimSteps = 8;
     private const double InteractionAimToleranceDegrees = 3;
+    private const double GateApproachArrivalRadius = 0.75;
     private readonly SemaphoreSlim navigationGate = new(1, 1);
     private NavigationProgress? navigationProgress;
 
@@ -33,7 +34,16 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
             var state = ObservedState.Parse(observation);
             var resolved = state.ResolveNavigationTarget(targetKind, targetId, targetState);
             var target = resolved.Position;
-            var distance = Vector3.Distance(state.Position, target);
+            // Gate approaches are horizontal staging points. Their Y value is the
+            // portal-core center while the observed player position is at the
+            // feet, so a 3D arrival check can never converge on normal terrain.
+            // Keep gate arrivals tight enough to preserve the opening centerline.
+            var distance = string.Equals(targetKind, "gate", StringComparison.Ordinal)
+                ? PlanarDistance(state.Position, target)
+                : Vector3.Distance(state.Position, target);
+            var arrivalRadius = Math.Clamp(within, 0.5, 8);
+            if (string.Equals(targetKind, "gate", StringComparison.Ordinal))
+                arrivalRadius = Math.Min(arrivalRadius, GateApproachArrivalRadius);
             var now = observation.ObservedAt;
             var progressKey = $"{state.WorldId}|{resolved.Key}";
             if (navigationProgress is null || !string.Equals(navigationProgress.Key, progressKey, StringComparison.Ordinal) ||
@@ -54,7 +64,7 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
             else if (!state.Grounded)
                 insufficientPulses = 0;
 
-            if (distance <= Math.Clamp(within, 0.5, 8))
+            if (distance <= arrivalRadius)
             {
                 navigationProgress = null;
                 return Result("navigate", false, true, observation, "Authenticated target is within range.");

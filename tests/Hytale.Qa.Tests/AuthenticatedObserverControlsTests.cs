@@ -195,6 +195,41 @@ public sealed class AuthenticatedObserverControlsTests
     }
 
     [Fact]
+    public async Task GateNavigationUsesPlanarDistanceAndRequiresCenterlineArrival()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var worldId = Guid.NewGuid().ToString("D");
+        var gateId = Guid.NewGuid();
+        ObserverObservation GateObservation(long sequence, double x) =>
+            Observation(sequence, now.AddMilliseconds(sequence * 100), worldId, new
+            {
+                positionX = x, positionY = 124, positionZ = 62.5, headYaw = 0, headPitch = 0,
+                grounded = true, jumping = false, falling = false,
+                currentRoomId = "", currentObjectiveId = "",
+                semanticTargets = Array.Empty<object>(), encounters = Array.Empty<object>(),
+                gates = new[] { new
+                {
+                    gateId, state = "OPEN", centerX = -215.5, centerY = 122.5, centerZ = 58.5,
+                    approaches = new[] { new { x = -215.5, y = 122.5, z = 62.5 } }
+                }}
+            });
+        var worker = new NavigationWorker([
+            GateObservation(1, -213.9),
+            GateObservation(2, -215.0)
+        ]);
+        var controls = new AuthenticatedObserverControls(worker);
+
+        var offCenter = await controls.NavigateAsync(
+            "gate", gateId.ToString("D"), "open", 2.5, CancellationToken.None);
+        var centered = await controls.NavigateAsync(
+            "gate", gateId.ToString("D"), "open", 2.5, CancellationToken.None);
+
+        Assert.False(offCenter.ObjectiveReached);
+        Assert.Single(worker.NavigationStates);
+        Assert.True(centered.ObjectiveReached);
+    }
+
+    [Fact]
     public async Task InteractionConvergesAuthenticatedAimBeforeClicking()
     {
         var now = DateTimeOffset.UtcNow;
