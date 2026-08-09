@@ -19,13 +19,17 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
 
     public async Task<ObserverControlResult> NavigateAsync(string targetKind, string? targetId,
         double within, CancellationToken cancellationToken)
+        => await NavigateAsync(targetKind, targetId, null, within, cancellationToken).ConfigureAwait(false);
+
+    public async Task<ObserverControlResult> NavigateAsync(string targetKind, string? targetId,
+        string? targetState, double within, CancellationToken cancellationToken)
     {
         await navigationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
             var state = ObservedState.Parse(observation);
-            var resolved = state.ResolveTarget(targetKind, targetId);
+            var resolved = state.ResolveTarget(targetKind, targetId, targetState);
             var target = resolved.Position;
             var distance = Vector3.Distance(state.Position, target);
             var now = observation.ObservedAt;
@@ -70,21 +74,40 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
 
     public async Task<ObserverControlResult> InteractAsync(string targetKind, string? targetId,
         CancellationToken cancellationToken)
+        => await InteractAsync(targetKind, targetId, null, cancellationToken).ConfigureAwait(false);
+
+    public async Task<ObserverControlResult> InteractAsync(string targetKind, string? targetId,
+        string? targetState, CancellationToken cancellationToken)
     {
-        var aimed = await AimAsync(targetKind, targetId, cancellationToken).ConfigureAwait(false);
+        var aimed = await AimAsync(targetKind, targetId, targetState, cancellationToken).ConfigureAwait(false);
         await worker.InteractAsync("left_click", cancellationToken).ConfigureAwait(false);
         return aimed with { Action = "interact", Message = "Aimed and interacted using authenticated target coordinates." };
     }
 
     public async Task<ObserverControlResult> AimAsync(string targetKind, string? targetId,
         CancellationToken cancellationToken)
+        => await AimAsync(targetKind, targetId, null, cancellationToken).ConfigureAwait(false);
+
+    public async Task<ObserverControlResult> AimAsync(string targetKind, string? targetId,
+        string? targetState, CancellationToken cancellationToken)
     {
         var observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
         var state = ObservedState.Parse(observation);
-        var target = state.ResolveTarget(targetKind, targetId).Position;
+        var target = state.ResolveTarget(targetKind, targetId, targetState).Position;
         await worker.AimStepAsync(new(state.Eye, state.YawDegrees, state.PitchDegrees, target), cancellationToken)
             .ConfigureAwait(false);
         return Result("aim", true, false, observation, "Aimed using authenticated target coordinates.");
+    }
+
+    public async Task<ObserverControlResult> AimAttackAsync(string authenticatedRole,
+        CancellationToken cancellationToken)
+    {
+        var observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
+        var state = ObservedState.Parse(observation);
+        var target = state.ResolveAttackTarget(authenticatedRole).Position;
+        await worker.AimStepAsync(new(state.Eye, state.YawDegrees, state.PitchDegrees, target), cancellationToken)
+            .ConfigureAwait(false);
+        return Result("aim", true, false, observation, "Aimed at an authenticated hostile current-run entity.");
     }
 
     public async Task<ObserverControlResult> CombatAsync(CancellationToken cancellationToken) =>
@@ -94,7 +117,7 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
     {
         var first = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
         var state = ObservedState.Parse(first);
-        var target = state.Encounters.Where(value => value.Alive && value.Hostile && value.CurrentRun && !value.IsPlayer && !value.FriendlyNpc)
+        var target = state.Encounters.Where(IsAttackableEncounter)
             .Where(value => authenticatedRole is null || RoleMatches(value.Role, authenticatedRole))
             .OrderBy(value => value.Distance).ThenBy(value => value.StableEntityId).FirstOrDefault();
         if (target is null) return Result("combat", false, true, first, "No authenticated current-run hostile remains.");
@@ -118,6 +141,10 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
         return string.Equals(actual, normalized, StringComparison.OrdinalIgnoreCase) ||
                actual.StartsWith(normalized + ".", StringComparison.OrdinalIgnoreCase);
     }
+
+    internal static bool IsAttackableEncounter(ObservedEncounter encounter) =>
+        encounter.Alive && encounter.Hostile && encounter.CurrentRun &&
+        !encounter.IsPlayer && !encounter.FriendlyNpc;
 
     private static ObserverControlResult Result(string action, bool executed, bool reached,
         ObserverObservation observation, string message) => new(action, executed, reached,
@@ -196,18 +223,27 @@ internal sealed record ObservedState(
             OptionalInt(state, "signatureEnergy"), cooldowns);
     }
 
-    public ResolvedObservedTarget ResolveTarget(string kind, string? id)
+    public ResolvedObservedTarget ResolveTarget(string kind, string? id, string? requestedState = null)
     {
-        if (string.Equals(kind, "objective", StringComparison.Ordinal))
+        if (string.Equals(kind, "anchor", StringComparison.Ordinal) ||
+            string.Equals(kind, "block", StringComparison.Ordinal) ||
+            string.Equals(kind, "objective", StringComparison.Ordinal))
         {
-            var mappedId = MapObjectiveTargetId(id);
-            if (mappedId is not null)
+            var semanticId = NormalizeSemanticTargetId(id);
+            var semantic = string.IsNullOrWhiteSpace(semanticId)
+                ? []
+                : SemanticTargets.Where(target =>
+                    string.Equals(target.Id, semanticId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var semanticRequired = !string.Equals(kind, "objective", StringComparison.Ordinal) ||
+                HasSemanticPrefix(id) || semantic.Length > 0;
+            if (semanticRequired)
             {
-                var semantic = SemanticTargets.Where(target =>
-                    string.Equals(target.Id, mappedId, StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (semantic.Length != 1) throw new InvalidOperationException("observer-objective-semantic-target-not-unique");
-                return new($"objective:{semantic[0].RoomId}:{semantic[0].Id}", semantic[0].Position);
+                if (semantic.Length == 0) throw new InvalidOperationException("observer-semantic-target-unavailable");
+                if (semantic.Length != 1) throw new InvalidOperationException("observer-semantic-target-not-unique");
+                return new($"semantic:{semantic[0].RoomId}:{semantic[0].Id}", semantic[0].Position);
             }
+            if (!string.Equals(kind, "objective", StringComparison.Ordinal))
+                throw new InvalidOperationException("observer-semantic-target-unavailable");
             if (id is not null && id.StartsWith("room.", StringComparison.Ordinal))
             {
                 var requestedRoom = id[5..];
@@ -230,10 +266,16 @@ internal sealed record ObservedState(
                 throw new InvalidOperationException("observer-gate-target-unavailable");
             var matches = gates.EnumerateArray().Where(gate =>
             {
+                var state = OptionalString(gate, "state");
+                if (!string.IsNullOrWhiteSpace(requestedState) &&
+                    !string.Equals(state, requestedState, StringComparison.OrdinalIgnoreCase)) return false;
                 if (string.Equals(id, "active", StringComparison.OrdinalIgnoreCase))
-                    return !string.Equals(OptionalString(gate, "state"), "RETIRED", StringComparison.OrdinalIgnoreCase);
-                return id is null || string.Equals(OptionalString(gate, "gateId"), id, StringComparison.OrdinalIgnoreCase);
+                    return IsActionableGateState(state);
+                return id is null || string.Equals(OptionalString(gate, "gateId"), id, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(OptionalString(gate, "semanticId"), id, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(OptionalString(gate, "regionId"), id, StringComparison.OrdinalIgnoreCase);
             }).ToArray();
+            if (matches.Length == 0) throw new InvalidOperationException("observer-gate-target-unavailable");
             if (matches.Length != 1) throw new InvalidOperationException("observer-gate-target-not-unique");
             return new($"gate:{OptionalString(matches[0], "gateId")}",
                 new(Number(matches[0], "centerX"), Number(matches[0], "centerY"), Number(matches[0], "centerZ")));
@@ -258,11 +300,27 @@ internal sealed record ObservedState(
         throw new InvalidOperationException("observer-target-kind-unsupported");
     }
 
-    private static string? MapObjectiveTargetId(string? id) => id switch
+    public ResolvedObservedTarget ResolveAttackTarget(string authenticatedRole)
     {
-        _ when id is not null && id.StartsWith("anchor.", StringComparison.Ordinal) => id[7..],
-        _ => null
-    };
+        if (string.IsNullOrWhiteSpace(authenticatedRole))
+            throw new InvalidOperationException("observer-entity-role-not-found");
+        var matches = Encounters.Where(AuthenticatedObserverControls.IsAttackableEncounter)
+            .Where(value => AuthenticatedObserverControls.RoleMatches(value.Role, authenticatedRole))
+            .OrderBy(value => value.Distance).ThenBy(value => value.StableEntityId).ToArray();
+        if (matches.Length == 0) throw new InvalidOperationException("observer-entity-role-not-found");
+        return new($"entity:{matches[0].StableEntityId}", matches[0].Position);
+    }
+
+    private static bool IsActionableGateState(string state) =>
+        state.Equals("OPEN", StringComparison.OrdinalIgnoreCase) ||
+        state.Equals("ENTERED", StringComparison.OrdinalIgnoreCase) ||
+        state.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasSemanticPrefix(string? id) =>
+        id is not null && id.StartsWith("anchor.", StringComparison.OrdinalIgnoreCase);
+
+    private static string? NormalizeSemanticTargetId(string? id) =>
+        HasSemanticPrefix(id) ? id![7..] : id;
 
     public CombatState Combat(IReadOnlyList<CombatCandidate> candidates)
     {

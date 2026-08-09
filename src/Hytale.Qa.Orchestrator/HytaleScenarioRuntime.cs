@@ -458,6 +458,7 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
     private async Task<QaStepResult> WaitAsync(QaScenarioStep step, CancellationToken cancellationToken)
     {
         var (kind, id, _) = Target(step);
+        var targetState = TargetState(step);
         while (true)
         {
             lastObservation = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
@@ -466,6 +467,19 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
                 return Pass("world-ready", "Authenticated sole-player snapshot reports a connected world.");
             if (kind == "objective" && ObjectivePresent(state, id))
                 return Pass("objective-observed", "Requested objective is present in authenticated run state.");
+            if (kind == "gate")
+            {
+                try
+                {
+                    _ = ObservedState.Parse(lastObservation).ResolveTarget(kind, id, targetState);
+                    return Pass("gate-state-observed", "Requested gate identity and lifecycle state are present in authenticated world state.");
+                }
+                catch (InvalidOperationException failure) when (
+                    string.Equals(failure.Message, "observer-gate-target-unavailable", StringComparison.Ordinal))
+                {
+                    // The requested lifecycle state has not arrived yet.
+                }
+            }
             await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -473,12 +487,11 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
     private async Task<QaStepResult> NavigateAsync(QaScenarioStep step, CancellationToken cancellationToken)
     {
         var (kind, id, within) = Target(step);
-        if (kind == "anchor") return Blocked("observer-anchor-unavailable",
-            "Observer does not expose a server-authored anchor coordinate, so navigation was not guessed.");
+        var targetState = TargetState(step);
         if (kind == "entity") id = TargetRole(step) ?? id;
         while (true)
         {
-            var result = await controls.NavigateAsync(kind, id, within, cancellationToken).ConfigureAwait(false);
+            var result = await controls.NavigateAsync(kind, id, targetState, within, cancellationToken).ConfigureAwait(false);
             if (result.ObjectiveReached) return Pass("navigation-target-reached", result.Message);
             await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
@@ -487,9 +500,10 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
     private async Task<QaStepResult> InteractAsync(QaScenarioStep step, CancellationToken cancellationToken)
     {
         var (kind, id, _) = Target(step);
+        var targetState = TargetState(step);
         if (kind == "entity") id = TargetRole(step) ?? id;
         var before = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
-        _ = await controls.InteractAsync(kind, id, cancellationToken).ConfigureAwait(false);
+        _ = await controls.InteractAsync(kind, id, targetState, cancellationToken).ConfigureAwait(false);
         await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         var after = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
         if (step.Operation == "route.choose" && step.Expect is { } expected && expected.TryGetProperty("route", out var route))
@@ -532,7 +546,7 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
             var state = ObservedState.Parse(observation);
             foreach (var encounter in state.Encounters.Where(value => !string.IsNullOrWhiteSpace(value.Role)))
                 observedRoles.Add(encounter.Role);
-            var matching = state.Encounters.Where(value => value.Hostile && value.CurrentRun &&
+            var matching = state.Encounters.Where(value => AuthenticatedObserverControls.IsAttackableEncounter(value) &&
                 (role is null || AuthenticatedObserverControls.RoleMatches(value.Role, role))).ToArray();
             foreach (var encounter in matching.Where(value => value.Alive)) seenAlive.Add(encounter.StableEntityId);
             foreach (var encounter in matching.Where(value => !value.Alive && seenAlive.Contains(value.StableEntityId)))
@@ -563,10 +577,10 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
         {
             var targetObservation = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
             var targetState = ObservedState.Parse(targetObservation);
-            if (!targetState.Encounters.Any(value => value.Alive && value.CurrentRun &&
+            if (!targetState.Encounters.Any(value => AuthenticatedObserverControls.IsAttackableEncounter(value) &&
                     AuthenticatedObserverControls.RoleMatches(value.Role, role)))
-                return Blocked("observer-ability-target-not-found", "Requested ability target role is absent from authenticated current-run encounters.");
-            _ = await controls.AimAsync("entity", role, cancellationToken).ConfigureAwait(false);
+                return Blocked("observer-ability-target-not-found", "Requested ability target role is absent from authenticated hostile current-run encounters.");
+            _ = await controls.AimAttackAsync(role, cancellationToken).ConfigureAwait(false);
         }
         var input = step.Arguments is { } arguments && arguments.TryGetProperty("input", out var value)
             ? value.GetString() ?? "" : "";
@@ -596,6 +610,7 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
                 "This physical runtime only supports the authenticated look-and-click trace probe.");
 
         var (kind, id, _) = Target(step);
+        var targetState = TargetState(step);
         if (kind is not ("gate" or "objective" or "fallback" or "entity"))
             return Blocked("observer-trace-target-unsupported",
                 "The trace probe requires a server-authored semantic target; caller coordinates were not accepted.");
@@ -603,7 +618,7 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
 
         var before = await ObserveWorkerAsync(cancellationToken).ConfigureAwait(false);
         var state = ObservedState.Parse(before);
-        var target = state.ResolveTarget(kind, id).Position;
+        var target = state.ResolveTarget(kind, id, targetState).Position;
         var aim = await worker.AimStepAsync(new(state.Eye, state.YawDegrees, state.PitchDegrees, target),
             cancellationToken).ConfigureAwait(false);
         await Task.Delay(100, cancellationToken).ConfigureAwait(false);
@@ -1180,6 +1195,8 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
 
     private static string? TargetRole(QaScenarioStep step) => step.Target is { } target && target.TryGetProperty("role", out var role)
         ? role.GetString() : null;
+    private static string? TargetState(QaScenarioStep step) => step.Target is { } target && target.TryGetProperty("state", out var state)
+        ? state.GetString() : null;
     private static bool ObjectivePresent(JsonElement state, string? id) => state.TryGetProperty("rooms", out var rooms) &&
         rooms.EnumerateArray().SelectMany(room => room.GetProperty("objectives").EnumerateArray())
             .Any(objective => string.Equals(objective.GetProperty("objectiveId").GetString(), id, StringComparison.Ordinal));

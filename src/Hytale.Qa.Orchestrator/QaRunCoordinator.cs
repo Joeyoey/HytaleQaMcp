@@ -452,16 +452,22 @@ public sealed class QaRunCoordinator : IAsyncDisposable
                         "artifact-manifest", artifactManifestSha256));
             }
             var resultPath = ResultPath(runId);
-            var resultAuthenticationPath = pins is null ? null : resultPath + ".auth.json";
+            // A structurally valid launcher proof can authenticate the coordinator's
+            // preflight failure even when freshness validation fails before runtime
+            // pins are created. This keeps fault reporting tamper-evident instead of
+            // leaving a result.json that the result reader cannot consume.
+            var resultAuthenticationPath = resultPath + ".auth.json";
             var result = new QaCoordinatedRunResult(runId, kind, targetId, phase, hashes, pins,
                 scenarioPins, reports, teardownAttempted, teardownSucceeded, started, finished, runRoot,
                 artifactManifestPath, artifactManifestSha256, artifactManifestAuthenticationPath,
                 resultAuthenticationPath, artifactGaps, code, message);
             AtomicWrite(resultPath, result);
-            if (resultAuthenticationPath is not null)
-                AtomicWrite(resultAuthenticationPath,
-                    launcherProofs.Seal(scenarioPins[^1].Pins.LauncherEvidenceFileName,
-                        "run-result", HashIfPresent(resultPath)));
+            var resultEvidenceFile = scenarioPins.Count > 0
+                ? scenarioPins[^1].Pins.LauncherEvidenceFileName
+                : launcherEvidenceFileName;
+            AtomicWrite(resultAuthenticationPath,
+                launcherProofs.Seal(resultEvidenceFile,
+                    "run-result", HashIfPresent(resultPath)));
             await gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {

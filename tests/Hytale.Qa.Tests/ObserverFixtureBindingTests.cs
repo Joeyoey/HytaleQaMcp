@@ -146,6 +146,27 @@ public sealed class ObserverFixtureBindingTests
         Assert.Equal(QaRunOutcome.InvalidEvidence, drift.Outcome);
     }
 
+    [Fact]
+    public void ObserveAndPinAcceptsLateSnapshotAndLoadoutThenRejectsEitherDrift()
+    {
+        var fixture = ProofBoundFixture();
+        var pins = new ObserverFixturePins();
+        Assert.True(ObserverFixtureBinding.Validate(OfflineProofKind.LauncherOwnedSingleplayer,
+            fixture, Snapshot(provenance: WorldOnlyProvenance()), pins).Valid);
+        Assert.True(ObserverFixtureBinding.Validate(OfflineProofKind.LauncherOwnedSingleplayer,
+            fixture, Snapshot(provenance: SnapshotAndLoadoutProvenance("snapshot-a", "loadout-a")), pins).Valid);
+
+        var snapshotDrift = ObserverFixtureBinding.Validate(OfflineProofKind.LauncherOwnedSingleplayer,
+            fixture, Snapshot(provenance: SnapshotAndLoadoutProvenance("snapshot-b", "loadout-a")), pins);
+        var loadoutDrift = ObserverFixtureBinding.Validate(OfflineProofKind.LauncherOwnedSingleplayer,
+            fixture, Snapshot(provenance: SnapshotAndLoadoutProvenance("snapshot-a", "loadout-b")), pins);
+
+        Assert.Equal(("fixture-provenance-drift", QaRunOutcome.InvalidEvidence),
+            (snapshotDrift.Code, snapshotDrift.Outcome));
+        Assert.Equal(("fixture-provenance-drift", QaRunOutcome.InvalidEvidence),
+            (loadoutDrift.Code, loadoutDrift.Outcome));
+    }
+
     private static QaScenarioFixture Fixture(QaPlayerIdentitySelector selector, QaPlayerFixture? player = null) => new(
         "hytale-qa-offline", "snapshot-a", 101L, 202L,
         player ?? new QaPlayerFixture(FixturePlayer, "SyntheticFixture", selector),
@@ -187,6 +208,17 @@ public sealed class ObserverFixtureBindingTests
         worldSeedSource = "world-manifest",
         runSeed,
         runSeedSource = "director-record"
+    };
+
+    private static object SnapshotAndLoadoutProvenance(string snapshotId, string loadoutId) => new
+    {
+        schema = ObserverFixtureBinding.ProvenanceSchema,
+        worldSeed = 101L,
+        worldSeedSource = "world-manifest",
+        snapshotId,
+        snapshotSource = "world-snapshot",
+        loadoutId,
+        loadoutSource = "native-profile"
     };
 
     private static JsonElement Snapshot(object? state = null, object? provenance = null)

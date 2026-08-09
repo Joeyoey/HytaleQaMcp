@@ -225,6 +225,27 @@ public sealed class QaRunCoordinatorTests : IDisposable
         Assert.False(paths.RunDirectory.StartsWith(paths.LauncherControlDirectory, StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task PreflightFaultStillPersistsAuthenticatedReadableResult()
+    {
+        WriteScenario("scenario.preflight-fault");
+        var paths = Paths();
+        var proofs = new ThrowingValidationProof(ReadyProofValidator.Summary("launch.json", 777));
+        await using var coordinator = new QaRunCoordinator(paths, new ScenarioCatalog(paths), new SuiteCatalog(paths),
+            new FakeRuntimeFactory(), proofs, new DetachedWorker());
+
+        var started = await coordinator.StartScenarioAsync(
+            "scenario.preflight-fault", 777, "launch.json", CancellationToken.None);
+        var completed = await WaitForCompletion(coordinator, started.RunId!);
+        var result = coordinator.Result(completed.RunId!);
+
+        Assert.Equal(QaCoordinatedRunPhase.Faulted, result.Phase);
+        Assert.Equal("coordinator-fault", result.Code);
+        Assert.NotNull(result.ResultAuthenticationPath);
+        Assert.True(File.Exists(result.ResultAuthenticationPath));
+        Assert.Empty(result.Scenarios);
+    }
+
     private async Task<QaCoordinatedRunState> WaitForCompletion(QaRunCoordinator coordinator, string runId)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -365,6 +386,22 @@ public sealed class QaRunCoordinatorTests : IDisposable
             return new("hytale-qa-evidence-seal-v1", purpose, value.SessionId, value.EvidenceId,
                 sha256, "test-protected", "test-mac:" + purpose + ":" + sha256);
         }
+        public void VerifySeal(LauncherEvidenceSeal seal, string purpose, string sha256)
+        {
+            if (seal.Mac != "test-mac:" + purpose + ":" + sha256)
+                throw new InvalidDataException("test seal mismatch");
+        }
+    }
+
+    private sealed class ThrowingValidationProof(LauncherProofSummary summary) : ILauncherProofValidator
+    {
+        public Task<LauncherProofSummary> ValidateAsync(string evidenceFileName,
+            CancellationToken cancellationToken) => throw new IOException("simulated preflight failure");
+
+        public LauncherEvidenceSeal Seal(string evidenceFileName, string purpose, string sha256) =>
+            new("hytale-qa-evidence-seal-v1", purpose, summary.SessionId, summary.EvidenceId,
+                sha256, "test-protected", "test-mac:" + purpose + ":" + sha256);
+
         public void VerifySeal(LauncherEvidenceSeal seal, string purpose, string sha256)
         {
             if (seal.Mac != "test-mac:" + purpose + ":" + sha256)
