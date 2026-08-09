@@ -215,9 +215,10 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
         if (preflight.ClientProcessId != clientProcessId)
             return Blocked("launcher-client-pid-mismatch", "Requested client PID does not match verified launch evidence.");
         lastObservation = await preflight.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
-        var observedWorld = lastObservation.WorldSnapshot.GetProperty("worldId").GetString();
-        if (!string.Equals(observedWorld, pinnedProof.Launcher?.WorldId, StringComparison.OrdinalIgnoreCase))
-            return Blocked("launcher-world-mismatch", "Observer world does not match the exact launcher proof world.");
+        if (!LauncherWorldMatches(lastObservation.WorldSnapshot,
+                pinnedProof.Launcher?.WorldId ?? ""))
+            return Blocked("launcher-world-mismatch",
+                "Observer is neither in the exact launcher root world nor an authenticated active-run instance owned by it.");
         var snapshot = lastObservation.WorldSnapshot;
         var binding = ObserverFixtureBinding.Validate(pinnedProof.Kind, scenario.Fixture, snapshot, fixturePins);
         if (!binding.Valid)
@@ -1307,6 +1308,39 @@ public sealed class HytaleScenarioRuntime : IQaScenarioRuntime, IQaLifecycleHand
     internal static bool IsTransientObservationFailure(ObserverSpoolException failure) =>
         string.Equals(failure.Code, "observer-server-snapshot-unavailable",
             StringComparison.Ordinal);
+
+    internal static bool LauncherWorldMatches(
+        JsonElement worldSnapshot,
+        string launcherWorldId)
+    {
+        if (!worldSnapshot.TryGetProperty("worldId", out var observedValue) ||
+            observedValue.ValueKind != JsonValueKind.String ||
+            !Guid.TryParse(observedValue.GetString(), out var observedWorld) ||
+            !Guid.TryParse(launcherWorldId, out var rootWorld))
+            return false;
+        if (observedWorld == rootWorld) return true;
+        if (!worldSnapshot.TryGetProperty("state", out var state) ||
+            state.ValueKind != JsonValueKind.Object ||
+            !state.TryGetProperty("launcherWorldContext", out var context) ||
+            context.ValueKind != JsonValueKind.Object)
+            return false;
+        if (!string.Equals(OptionalString(context, "schema"),
+                "hytale-qa-launcher-world-context-v1", StringComparison.Ordinal) ||
+            !string.Equals(OptionalString(context, "scope"),
+                "owned_instance", StringComparison.Ordinal) ||
+            !OptionalBoolean(context, "playerRunAttached") ||
+            !OptionalBoolean(state, "runAttached"))
+            return false;
+        if (!Guid.TryParse(OptionalString(context, "rootWorldId"), out var contextRoot) ||
+            !Guid.TryParse(OptionalString(context, "currentWorldId"), out var contextCurrent) ||
+            !Guid.TryParse(OptionalString(context, "ownerRunId"), out var ownerRun) ||
+            !Guid.TryParse(OptionalString(state, "runId"), out var activeRun))
+            return false;
+        if (contextRoot != rootWorld || contextCurrent != observedWorld || ownerRun != activeRun)
+            return false;
+        return string.Equals(OptionalString(context, "currentWorldName"),
+            OptionalString(state, "worldName"), StringComparison.Ordinal);
+    }
 
     private ObserverObservation ValidateBoundObservation(ObserverObservation observation)
     {
