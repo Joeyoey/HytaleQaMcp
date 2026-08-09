@@ -167,6 +167,33 @@ public sealed class AuthenticatedObserverControlsTests
         Assert.Equal(TimeSpan.Zero, worker.NavigationStates[3].NoProgress);
     }
 
+    [Fact]
+    public void GateNavigationChoosesNearestAuthenticatedApproachButInteractionKeepsCore()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var gateId = Guid.NewGuid();
+        var observation = Observation(1, now, Guid.NewGuid().ToString("D"), new
+        {
+            positionX = 8, positionY = 4, positionZ = 1, headYaw = 0, headPitch = 0,
+            grounded = true, jumping = false, falling = false,
+            currentRoomId = "", currentObjectiveId = "",
+            semanticTargets = Array.Empty<object>(), encounters = Array.Empty<object>(),
+            gates = new[] { new
+            {
+                gateId, state = "OPEN", centerX = 0, centerY = 4, centerZ = 0,
+                approaches = new[] { new { x = 0, y = 4, z = -4 }, new { x = 0, y = 4, z = 4 } }
+            }}
+        });
+        var state = ObservedState.Parse(observation);
+
+        var navigation = state.ResolveNavigationTarget("gate", gateId.ToString(), "open");
+        var interaction = state.ResolveTarget("gate", gateId.ToString(), "open");
+
+        Assert.Equal(new Vector3(0, 4, 4), navigation.Position);
+        Assert.EndsWith(":approach:1", navigation.Key, StringComparison.Ordinal);
+        Assert.Equal(new Vector3(0, 4, 0), interaction.Position);
+    }
+
     private static ObserverObservation NavigationObservation(long sequence, DateTimeOffset observedAt, string worldId) =>
         Observation(sequence, observedAt, worldId, new
         {

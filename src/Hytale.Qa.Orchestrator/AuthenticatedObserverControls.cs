@@ -29,7 +29,7 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
         {
             var observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
             var state = ObservedState.Parse(observation);
-            var resolved = state.ResolveTarget(targetKind, targetId, targetState);
+            var resolved = state.ResolveNavigationTarget(targetKind, targetId, targetState);
             var target = resolved.Position;
             var distance = Vector3.Distance(state.Position, target);
             var now = observation.ObservedAt;
@@ -298,6 +298,42 @@ internal sealed record ObservedState(
             return new($"entity:{matches[0].StableEntityId}", matches[0].Position);
         }
         throw new InvalidOperationException("observer-target-kind-unsupported");
+    }
+
+    public ResolvedObservedTarget ResolveNavigationTarget(
+        string kind,
+        string? id,
+        string? requestedState = null
+    ) {
+        var target = ResolveTarget(kind, id, requestedState);
+        if (!string.Equals(kind, "gate", StringComparison.Ordinal)
+            || !State.TryGetProperty("gates", out var gates)
+            || gates.ValueKind != JsonValueKind.Array) return target;
+
+        var gateId = target.Key.StartsWith("gate:", StringComparison.Ordinal)
+            ? target.Key[5..]
+            : "";
+        var gate = gates.EnumerateArray().SingleOrDefault(value =>
+            string.Equals(OptionalString(value, "gateId"), gateId,
+                StringComparison.OrdinalIgnoreCase));
+        if (gate.ValueKind == JsonValueKind.Undefined
+            || !gate.TryGetProperty("approaches", out var approaches)
+            || approaches.ValueKind != JsonValueKind.Array
+            || approaches.GetArrayLength() == 0) return target;
+
+        var candidates = approaches.EnumerateArray()
+            .Select((value, index) => new
+            {
+                Index = index,
+                Position = new Vector3(Number(value, "x"), Number(value, "y"), Number(value, "z"))
+            })
+            .OrderBy(value => Vector2.Distance(
+                new(Position.X, Position.Z),
+                new(value.Position.X, value.Position.Z)))
+            .ThenBy(value => value.Index)
+            .ToArray();
+        var selected = candidates[0];
+        return new($"{target.Key}:approach:{selected.Index}", selected.Position);
     }
 
     public ResolvedObservedTarget ResolveAttackTarget(string authenticatedRole)
