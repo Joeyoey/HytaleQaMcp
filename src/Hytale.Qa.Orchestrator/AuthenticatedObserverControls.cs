@@ -97,7 +97,9 @@ public sealed class AuthenticatedObserverControls(IWorkerControlService worker)
             await Task.Delay(75, cancellationToken).ConfigureAwait(false);
             observation = await worker.ObserveSolePlayerAsync(cancellationToken).ConfigureAwait(false);
         }
-        await worker.InteractAsync("left_click", cancellationToken).ConfigureAwait(false);
+        // Hytale block use is the secondary/right-click interaction. Primary
+        // click is block break/attack and never raises UseBlockEvent.
+        await worker.InteractAsync("right_click", cancellationToken).ConfigureAwait(false);
         return Result("interact", true, false, observation,
             $"Aligned in {aimSteps} observer-derived aim step(s) and interacted using authenticated target coordinates.");
     }

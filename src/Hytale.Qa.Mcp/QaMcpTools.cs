@@ -165,7 +165,7 @@ public sealed class QaMcpTools
         CancellationToken cancellationToken) =>
         Json(await controls.NavigateAsync(targetKind, targetId, within, cancellationToken));
 
-    [McpServerTool(Name = "qa_interact_observed"), Description("Aims and left-clicks a server-authored objective or gate target from an authenticated sole-player observation. No coordinates are accepted from the caller.")]
+    [McpServerTool(Name = "qa_interact_observed"), Description("Aims and performs Hytale's secondary block-use interaction on a server-authored objective or gate target from an authenticated sole-player observation. No coordinates are accepted from the caller.")]
     public static async Task<string> InteractObserved(
         AuthenticatedObserverControls controls,
         [Description("One of: objective, fallback, gate.")] string targetKind,
